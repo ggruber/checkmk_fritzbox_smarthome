@@ -6,8 +6,13 @@ def _agent_arguments(params, host_config):
     args = [
         "--host", host_config.ipv4_config.address,
         "--username", params.get("username", "x"),
-        "--password", params.get("password").unsafe()
+        "--password", params.get("password").unsafe(),
+        "--port", str(params.get("port", 80)),
+        "--protocol", params.get("protocol", "http"),
     ]
+
+    if params.get("ignore_ssl", False):
+        args.append("--ignore-ssl")
     
     yield SpecialAgentCommand(command_arguments=args)
 
