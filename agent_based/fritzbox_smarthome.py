@@ -49,95 +49,146 @@ def discover_fritzbox_smarthome(section):
         name = f"{dev_type} {dev['id']} {dev['name']}"
         yield Service(item=name, parameters={})
 
+
 default_params = {
+    "present": 1,
     "hkr": {
-        "bat_warn": 30,
-        "bat_crit": 20,
-        "diff_warn": 5.0,
-        "diff_crit": 8.0,
+        "hkr_bat_always": True,
+        "hkr_warn": {
+            "hkr_diff_soll": 5.0,
+            "hkr_bat_below": 50,
+        },
+        "hkr_crit": {
+            "hkr_diff_soll": 10.0,
+            "hkr_bat_below": 30,
+        },
     },
     "humidity": {
-        "warn": (60, 40),
-        "crit": (70, 30),
+        "humidity_warn": {
+            "higher_than": 60,
+            "lower_than": 40,
+        },
+        "humidity_crit": {
+            "higher_than": 70,
+            "lower_than": 30,
+        },
     },
 }
 
 def check_fritzbox_smarthome(item, params, section):
     params = params or default_params
-    dev = next((d for d in section if d["id"] == item.split(" ")[1]), None)
 
+    # Device filter
+    dev_id = item.split(" ")[1]
+    dev = next((d for d in section if d["id"] == dev_id), None)
     if not dev:
         yield Result(state=State.CRIT, summary="Device not found")
         return
 
+    # Offline‐Handling
+    present_param = str(params.get("present", "warn"))
     if dev.get("present") != "1":
-        yield Result(state=State.WARN, summary="Device not present")
+        state = {"ok": State.OK, "warn": State.WARN, "crit": State.CRIT}.get(present_param, State.WARN)
+        yield Result(state=state, summary="Device not present")
         return
 
-    summary = f"{dev['manufacturer']} {dev['productname']} ({dev['name']})"
+    # Grund‐OK mit Hersteller/Name
+    summary = f"{dev.get('manufacturer','?')} {dev.get('productname','?')} ({dev.get('name','?')})"
     yield Result(state=State.OK, summary=summary)
 
     data = dev.get("data", {})
 
+    # --- Thermostat (HKR) ---
     if "hkr" in data:
-        hkr = data["hkr"]
-        tist = float(hkr.get("tist", 0)) / 2
-        tsoll = float(hkr.get("tsoll", 0)) / 2
+        h = data["hkr"]
+        tist = float(h.get("tist", 0)) / 2
+        tsoll = float(h.get("tsoll", 0)) / 2
         diff = abs(tsoll - tist)
-        battery = int(hkr.get("battery", 0))
+        battery = int(h.get("battery", 0))
 
+        # Temperatur‐Metriken
         yield Metric("temp_actual", tist)
         yield Metric("temp_target", tsoll)
-        yield Metric("battery", battery, boundaries=(0, 100))
 
-        if battery < params["hkr"]["bat_crit"]:
+        # Batterie‐Metrik nur wenn gewünscht
+        if params["hkr"].get("hkr_bat_always", False):
+            yield Metric("battery", battery, boundaries=(0, 100))
+
+        # Warn‐/Crit‐Schwellen aus Ruleset ziehen
+        warn_p = params["hkr"]["hkr_warn"]
+        crit_p = params["hkr"]["hkr_crit"]
+        warn_diff = warn_p.get("hkr_diff_soll", 5.0)
+        crit_diff = crit_p.get("hkr_diff_soll", 10.0)
+        warn_bat  = warn_p.get("hkr_bat_below", 50)
+        crit_bat  = crit_p.get("hkr_bat_below", 30)
+
+        # Batterie‐Zustand
+        if battery < crit_bat:
             yield Result(state=State.CRIT, summary=f"Battery critically low: {battery}%")
-        elif battery < params["hkr"]["bat_warn"]:
+        elif battery < warn_bat:
             yield Result(state=State.WARN, summary=f"Battery low: {battery}%")
 
-        if diff > params["hkr"]["diff_crit"]:
-            yield Result(state=State.CRIT, summary=f"Temperature deviation too high: {diff}°C")
-        elif diff > params["hkr"]["diff_warn"]:
-            yield Result(state=State.WARN, summary=f"Temperature deviation: {diff}°C")
+        yield Result(state=State.OK, summary=f"Temperature: {tist}°C")
 
+        # Temperatur‐Abweichung
+        if int(h.get("summeractive"), 0) == 0:
+            if diff > crit_diff:
+                yield Result(state=State.CRIT, summary=f"Temperature deviation too high: {diff}°C")
+            elif diff > warn_diff:
+                yield Result(state=State.WARN, summary=f"Temperature deviation: {diff}°C")#
+        else:
+            yield Result(state=State.OK, summary=f"(Sommermodus)")
+
+    # --- Luftfeuchtigkeit ---
     if "humidity" in data:
         rh = int(data["humidity"].get("rel_humidity", 0))
         yield Metric("humidity", rh)
-        if rh > params["humidity"]["crit"][0] or rh < params["humidity"]["crit"][1]:
+
+        hwarn = params["humidity"]["humidity_warn"]
+        hcrit = params["humidity"]["humidity_crit"]
+        warn_high = hwarn.get("higher_than", 60)
+        warn_low  = hwarn.get("lower_than",  40)
+        crit_high = hcrit.get("higher_than", 70)
+        crit_low  = hcrit.get("lower_than",  30)
+
+        if rh > crit_high or rh < crit_low:
             yield Result(state=State.CRIT, summary=f"Humidity critical: {rh}%")
-        elif rh > params["humidity"]["warn"][0] or rh < params["humidity"]["warn"][1]:
+        elif rh > warn_high or rh < warn_low:
             yield Result(state=State.WARN, summary=f"Humidity warning: {rh}%")
         else:
             yield Result(state=State.OK, summary=f"Humidity OK: {rh}%")
 
+    # --- Switch, Powermeter etc. unverändert ---
     if "switch" in data:
-        switch_state = data["switch"].get("state", "0")
-        mode = data["switch"].get("mode", "unknown")
-        yield Metric("switch_state", int(switch_state))
-        yield Result(state=State.OK, summary=f"Switch is {'ON' if switch_state == '1' else 'OFF'} ({mode})")
+        st = data["switch"].get("state","0")
+        mode = data["switch"].get("mode","unknown")
+        yield Metric("switch_state", int(st))
+        yield Result(state=State.OK, summary=f"Switch is {'ON' if st=='1' else 'OFF'} ({mode})")
 
     if "powermeter" in data:
         pm = data["powermeter"]
-        
-        if pm.get("power", 0) == None:
+        # Power
+        p = pm.get("power")
+        if p is None:
             yield Result(state=State.WARN, summary="Power not available")
         else:
-            power = float(pm.get("power", 0)) / 1000
+            power = float(p) / 1000
             yield Metric("power", power)
             yield Result(state=State.OK, summary=f"Power: {power:.2f}W")
-        
-        if pm.get("energy", 0) == None:
+        # Energy
+        e = pm.get("energy")
+        if e is None:
             yield Result(state=State.WARN, summary="Energy not available")
         else:
-            energy = float(pm.get("energy", 0)) / 1000
+            energy = float(e) / 1000
             yield Metric("energy", energy)
             yield Result(state=State.OK, summary=f"Energy: {energy:.2f}kWh")
-
-
-        if pm.get("voltage", 0) == None:    
+        # Voltage
+        v = pm.get("voltage")
+        if v is None:
             yield Result(state=State.WARN, summary="Voltage not available")
         else:
-            voltage = float(pm.get("voltage", 0)) / 1000
+            voltage = float(v) / 1000
             yield Metric("voltage", voltage)
             yield Result(state=State.OK, summary=f"Voltage: {voltage:.1f}V")
 
