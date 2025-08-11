@@ -39,6 +39,7 @@ def detect_device_type(fbm):
     return "SmarthomeDevice"
 
 def parse_fritzbox_smarthome(string_table):
+    #print ("stringtable : ", string_table)
     flat = list(itertools.chain.from_iterable(string_table))
     data = json.loads("".join(flat))
     return data
@@ -85,36 +86,26 @@ def check_fritzbox_smarthome(item, params, section):
         yield Result(state=State.CRIT, summary="Device not found")
         return
 
-    # Offline‐Handling
+    #print("dev0: ", dev)
+
+    # offline-handling
     present_param = str(params.get("present", "warn"))
     if dev.get("present") != "1":
         state = {"ok": State.OK, "warn": State.WARN, "crit": State.CRIT}.get(present_param, State.WARN)
         yield Result(state=state, summary="Device not present")
         return
 
-    # Grund‐OK mit Hersteller/Name
+    # set default-OK with Vendor/Name
     summary = f"{dev.get('manufacturer','?')} {dev.get('productname','?')} ({dev.get('name','?')})"
     yield Result(state=State.OK, summary=summary)
 
     data = dev.get("data", {})
 
-    # --- Thermostat (HKR) ---
+    # --- thermostat (HKR aka Heizkoerperegler) ---
     if "hkr" in data:
         h = data["hkr"]
-        tist = float(h.get("tist", 0)) / 2
-        tsoll = float(h.get("tsoll", 0)) / 2
-        diff = abs(tsoll - tist)
-        battery = int(h.get("battery", 0))
 
-        # Temperatur‐Metriken
-        yield Metric("temp_actual", tist)
-        yield Metric("temp_target", tsoll)
-
-        # Batterie‐Metrik nur wenn gewünscht
-        if params["hkr"].get("hkr_bat_always", False):
-            yield Metric("battery", battery, boundaries=(0, 100))
-
-        # Warn‐/Crit‐Schwellen aus Ruleset ziehen
+        # get warn-crit-level from ruleset
         warn_p = params["hkr"]["hkr_warn"]
         crit_p = params["hkr"]["hkr_crit"]
         warn_diff = warn_p.get("hkr_diff_soll", 5.0)
@@ -122,24 +113,51 @@ def check_fritzbox_smarthome(item, params, section):
         warn_bat  = warn_p.get("hkr_bat_below", 50)
         crit_bat  = crit_p.get("hkr_bat_below", 30)
 
-        # Batterie‐Zustand
+        # --- battery ---
+        battery = int(h.get("battery", 0))
+        # battery state
         if battery < crit_bat:
             yield Result(state=State.CRIT, summary=f"Battery critically low: {battery}%")
         elif battery < warn_bat:
             yield Result(state=State.WARN, summary=f"Battery low: {battery}%")
 
+        # battery-metric (only if requested)
+        if params["hkr"].get("hkr_bat_always", False):
+            yield Metric("battery", battery, boundaries=(0, 100))
+
+        # --- temperature ---
+        tist = float(h.get("tist", 0)) / 2
+
+        # temperature-metrics #1 (is-value)
+        yield Metric("temp_actual", tist)
+
         yield Result(state=State.OK, summary=f"Temperature: {tist}°C")
 
-        # Temperatur‐Abweichung
-        if int(h.get("summeractive"), 0) == 0:
+        # temperature-deviation
+        # target-value gives no numerical sense for computation/drawing during summer period
+        # during non-heating period (summer): tsoll is reported as 253 (kindof max value?)
+        #tsoll = float(h.get("tsoll", 0)) / 2 
+        tsollraw = int(h.get("tsoll", 0))
+        if int(h.get("summeractive"), 0) == 0 and tsollraw != 253:
+            tsoll = float(tsollraw) / 2.0
+            # temperature-metrics #2 (target-value)
+            yield Metric("temp_target", tsoll)
+
+            diff = abs(tsoll - tist)
             if diff > crit_diff:
-                yield Result(state=State.CRIT, summary=f"Temperature deviation too high: {diff}°C")
+                yield Result(state=State.CRIT, summary=f"Temperature deviation too high: {diff}K")
             elif diff > warn_diff:
-                yield Result(state=State.WARN, summary=f"Temperature deviation: {diff}°C")#
+                yield Result(state=State.WARN, summary=f"Temperature deviation: {diff}K")
         else:
             yield Result(state=State.OK, summary=f"(Sommermodus)")
 
-    # --- Luftfeuchtigkeit ---
+        # --- windowopen ---
+        wo = int(h.get("windowopenactiv", "0"))
+        yield Metric("WindowOpen", wo)
+        yield Result(state=State.OK, summary=f"Window is {'open' if wo==1 else 'closed'}")
+            
+
+    # --- humidity ---
     if "humidity" in data:
         rh = int(data["humidity"].get("rel_humidity", 0))
         yield Metric("humidity", rh)
@@ -158,7 +176,26 @@ def check_fritzbox_smarthome(item, params, section):
         else:
             yield Result(state=State.OK, summary=f"Humidity OK: {rh}%")
 
-    # --- Switch, Powermeter etc. unverändert ---
+    # --- temperatur (none-hkr devices)  ---
+    # no warn/crit levels
+    if "temperature" in data:
+        te = float(data["temperature"].get("celsius", 0)) / 10.0
+        yield Metric("temperature", te)
+        yield Result(state=State.OK, summary=f"Temperature: {te}°C")
+
+    # --- battery + batterylow (generic) ---
+    #print("dev: ", dev)
+    if "battery" in dev and dev.get("battery") != None:
+        blvl = int(dev.get("battery"))
+        yield Metric("batteryLevel", blvl)
+    if "batterylow" in dev and dev.get("batterylow") != None:
+        bl = int(dev.get("batterylow"))
+        if bl == 0:
+            yield Result(state=State.OK, summary=f"Battery is ok")
+        else:
+            yield Result(state=State.WARN, summary=f"Battery is low")
+
+    # --- Switch, Powermeter etc. unchanged ---
     if "switch" in data:
         st = data["switch"].get("state","0")
         mode = data["switch"].get("mode","unknown")

@@ -75,6 +75,8 @@ def fetch_device_info(base_url, sid, verify_ssl, debug):
             "identifier": device.get("identifier"),
             "present": device.findtext("present"),
             "name": device.findtext("name"),
+            "battery": device.findtext("battery"),
+            "batterylow": device.findtext("batterylow"),
             "data": {}
         }
 
