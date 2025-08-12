@@ -39,7 +39,6 @@ def detect_device_type(fbm):
     return "SmarthomeDevice"
 
 def parse_fritzbox_smarthome(string_table):
-    #print ("stringtable : ", string_table)
     flat = list(itertools.chain.from_iterable(string_table))
     data = json.loads("".join(flat))
     return data
@@ -85,8 +84,6 @@ def check_fritzbox_smarthome(item, params, section):
     if not dev:
         yield Result(state=State.CRIT, summary="Device not found")
         return
-
-    #print("dev0: ", dev)
 
     # offline-handling
     present_param = str(params.get("present", "warn"))
@@ -184,7 +181,6 @@ def check_fritzbox_smarthome(item, params, section):
         yield Result(state=State.OK, summary=f"Temperature: {te}°C")
 
     # --- battery + batterylow (generic) ---
-    #print("dev: ", dev)
     if "battery" in dev and dev.get("battery") != None:
         blvl = int(dev.get("battery"))
         yield Metric("batteryLevel", blvl)
