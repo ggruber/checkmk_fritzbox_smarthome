@@ -44,14 +44,18 @@ def parse_fritzbox_smarthome(string_table):
     return data
 
 def discover_fritzbox_smarthome(section):
+    #sHFU_param = bool(params.get("showHFunit", False))
     for dev in section:
         dev_type = detect_device_type(dev.get("functionbitmask", 0))
+        if dev_type == "HANFUNUnit":
+            continue
         name = f"{dev_type} {dev['id']} {dev['name']}"
         yield Service(item=name, parameters={})
 
 
 default_params = {
     "present": 1,
+    "showHFunit": False,
     "hkr": {
         "hkr_bat_always": True,
         "hkr_warn": {
@@ -83,6 +87,11 @@ def check_fritzbox_smarthome(item, params, section):
     dev = next((d for d in section if d["id"] == dev_id), None)
     if not dev:
         yield Result(state=State.CRIT, summary="Device not found")
+        return
+
+    dev_type = item.split(" ")[0]
+    if dev_type == "HANFUNUnit" and not params.get("sHFU_param", False):
+        # ignore HANFUNUnit unless showHANFANUnit is True
         return
 
     # offline-handling
@@ -181,7 +190,7 @@ def check_fritzbox_smarthome(item, params, section):
         yield Result(state=State.OK, summary=f"Temperature: {te}°C")
 
     # --- battery + batterylow (generic) ---
-    if "battery" in dev and dev.get("battery") != None:
+    if "battery" in dev and dev.get("battery") != None and dev.get("battery") != 'null,':
         blvl = int(dev.get("battery"))
         yield Metric("batteryLevel", blvl)
     if "batterylow" in dev and dev.get("batterylow") != None:

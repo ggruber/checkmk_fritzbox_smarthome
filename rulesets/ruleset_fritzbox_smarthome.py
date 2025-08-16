@@ -31,6 +31,15 @@ def _parameter_form():
                 required=True,
             ),
 
+            # show HANFUNUnit (default: off)
+            'showHFunit': DictElement(
+                parameter_form=BooleanChoice(
+                    title=Title("show HANFUNUnit entries"),
+                    prefill=DefaultValue(False),
+                ),
+                required=True,
+            ),
+
             # Thermostat-Gruppe
             'hkr': DictElement(
                 parameter_form = Dictionary(
@@ -194,7 +203,7 @@ def _parameter_form():
     )
 
 
-# Jetzt den Ruleset‐Block definieren und registrieren
+# Jetzt den Ruleset-Block definieren und registrieren
 rule_spec_fritzbox_smarthome = CheckParameters(
     name            = "fritzbox_smarthome",
     title           = Title("Settings for Fritz!Box Smarthome Devices"),
