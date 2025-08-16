@@ -40,12 +40,12 @@ def _parameter_form():
                 required=True,
             ),
 
-            # Thermostat-Gruppe
+            # Thermostat-group
             'hkr': DictElement(
                 parameter_form = Dictionary(
                     title    = Title("Thermostat (battery settings are also here)"),
                     elements = {
-                        # Immer Batterie-Status anzeigen?
+                        # show battery always ?
                         'hkr_bat_always': DictElement(
                             parameter_form = BooleanChoice(
                                 title        = Title("Show Batterystate always"),
@@ -146,7 +146,7 @@ def _parameter_form():
                 required = True,
             ),
 
-            # Luftfeuchtigkeit
+            # Humidity
             'humidity': DictElement(
                 parameter_form = Dictionary(
                     title    = Title("Humidity"),
@@ -203,7 +203,7 @@ def _parameter_form():
     )
 
 
-# Jetzt den Ruleset-Block definieren und registrieren
+# define and register ruleset block
 rule_spec_fritzbox_smarthome = CheckParameters(
     name            = "fritzbox_smarthome",
     title           = Title("Settings for Fritz!Box Smarthome Devices"),

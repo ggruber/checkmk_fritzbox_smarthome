@@ -39,16 +39,14 @@ def detect_device_type(fbm):
     return "SmarthomeDevice"
 
 def parse_fritzbox_smarthome(string_table):
+    #print ("stringtable : ", string_table)
     flat = list(itertools.chain.from_iterable(string_table))
     data = json.loads("".join(flat))
     return data
 
 def discover_fritzbox_smarthome(section):
-    #sHFU_param = bool(params.get("showHFunit", False))
     for dev in section:
         dev_type = detect_device_type(dev.get("functionbitmask", 0))
-        if dev_type == "HANFUNUnit":
-            continue
         name = f"{dev_type} {dev['id']} {dev['name']}"
         yield Service(item=name, parameters={})
 
@@ -89,6 +87,7 @@ def check_fritzbox_smarthome(item, params, section):
         yield Result(state=State.CRIT, summary="Device not found")
         return
 
+    # make HANFUNUnit devices ignored if not chosen otherwise by config
     dev_type = item.split(" ")[0]
     if dev_type == "HANFUNUnit" and not params.get("sHFU_param", False):
         # ignore HANFUNUnit unless showHANFANUnit is True
