@@ -45,8 +45,12 @@ def parse_fritzbox_smarthome(string_table):
     return data
 
 def discover_fritzbox_smarthome(section):
+    # missing access to params here: dunno how to get around this
     for dev in section:
         dev_type = detect_device_type(dev.get("functionbitmask", 0))
+        # hardcoded filter what is wrong
+        if dev_type == "HANFUNUnit":
+            continue
         name = f"{dev_type} {dev['id']} {dev['name']}"
         yield Service(item=name, parameters={})
 
