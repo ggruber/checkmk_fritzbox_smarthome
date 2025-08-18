@@ -2,6 +2,7 @@
 v2.0.1
 * added support for temperature readings from switches, batterystate
 * draw graphs for battery and temperatures
+
 v2.0.0
 * initial release, rewrite of a version for CMK 1.6
 * suppress HANFUNunit devices (they bring no information)
