@@ -1,0 +1,17 @@
+# Release Notes for fritzbox_smarthome
+v2.0.1
+* added support for temperature readings from switches, batterystate
+* draw graphs for battery and temperatures
+v2.0.0
+* initial release, rewrite of a version for CMK 1.6
+* suppress HANFUNunit devices (they bring no information)
+
+# known issues
+v2.0.1
+* the option to allow the display of HANFUNunit devices does not work for discovery
+  effectivly it's implemented incompletely
+* temperatur is shown twice for thermostat devices (comes so from raw api data)
+* for thermostat devices there are two mechanisms of battery warning implemented:
+  the orignal batterylow warning as given from the Fritz!Box and
+  a configurable threshold check
+* so possibly more options should become hideable by configuration
