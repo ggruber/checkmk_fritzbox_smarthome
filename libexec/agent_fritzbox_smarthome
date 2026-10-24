@@ -26,12 +26,19 @@ def parse_args():
 def login(base_url, username, password, verify_ssl, debug):
     sid_url = f"{base_url}/login_sid.lua"
     r = requests.get(sid_url, verify=verify_ssl)
-    xml = ET.fromstring(r.content)
+    try:
+        xml = ET.fromstring(r.content)
 
-    challenge = xml.find("Challenge").text
-    blocktime = int(xml.find("BlockTime").text)
-    if blocktime > 0:
+        challenge = xml.find("Challenge").text
+        blocktime = int(xml.find("BlockTime").text)
+    except ET.ParseError as e:
+        raise Exception(f"did not receive XML as expected. Got {r.content} instead")
+
+    if blocktime is not None and blocktime > 0:
         raise Exception(f"Login blocked for {blocktime} seconds")
+
+    if challenge is None or challenge == "":
+        raise Exception(f"No login challenge. got {r.content} instead")
 
     # Prepare challenge-response
     challenge_response = challenge + "-" + hashlib.md5(
